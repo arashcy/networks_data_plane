@@ -29,8 +29,8 @@ class Interface:
 class NetworkPacket:
     ## packet encoding lengths 
     dst_addr_S_length = 5
-    offset_length = 2
-    flag_length = 1
+    offset_length = 5
+    flag_length = 5
 
     ##@param dst_addr: address of the destination host
     # @param data_S: packet payload
@@ -57,8 +57,8 @@ class NetworkPacket:
     @classmethod
     def from_byte_S(self, byte_S):
         dst_add = int(byte_S[0 : NetworkPacket.dst_addr_S_length])
-        offset = int(byte_S[NetworkPacket.dst_addr_S_length : NetworkPacket.offset_length])
-        flag = int(byte_S[NetworkPacket.dst_addr_S_length + NetworkPacket.offset_length: NetworkPacket.flag_length])
+        offset = int(byte_S[NetworkPacket.dst_addr_S_length : NetworkPacket.dst_addr_S_length + NetworkPacket.offset_length])
+        flag = int(byte_S[NetworkPacket.dst_addr_S_length + NetworkPacket.offset_length: NetworkPacket.dst_addr_S_length + NetworkPacket.offset_length + NetworkPacket.flag_length])
         data_S = byte_S[NetworkPacket.dst_addr_S_length  + NetworkPacket.offset_length + NetworkPacket.flag_length: ]
         return self(dst_add, data_S, offset, flag)
     
@@ -67,7 +67,8 @@ class NetworkPacket:
 
 ## Implements a network host for receiving and transmitting data
 class Host:
-    
+
+    number=0
     ##@param addr: address of this node represented as an integer
     def __init__(self, addr):
         self.addr = addr
@@ -78,7 +79,7 @@ class Host:
     ## called when printing the object
     def __str__(self):
         return 'Host_%s' % (self.addr)
-       
+
     ## create a packet and enqueue for transmission
     # @param dst_addr: destination address for the packet
     # @param data_S: data being transmitted to the network layer
@@ -88,7 +89,8 @@ class Host:
         i=0
         string_S=""
         message=data_S
-        if(self.out_intf_L[0].mtu<50):
+
+        if(self.out_intf_L[self.number].mtu<50):
             while counter!=0:
                 if counter<=30:
                     print("IM HERE2")
@@ -107,10 +109,12 @@ class Host:
                     counter=counter-30
                     offset=30+offset
                     i=i+1
+                    self.number=i
         else:
             p = NetworkPacket(dst_addr, data_S, 0, 0)
             self.out_intf_L[0].put(p.to_byte_S()) #send packets always enqueued successfully
             print('%s: sending packet "%s" on the out interface with mtu=%d' % (self, p, self.out_intf_L[0].mtu))
+
 ##        if (len(data_S)>40):
 ##            data1, data2= data_S[:len(data_S)//2], data_S[len(data_S)//2:]
 ##            p1 = NetworkPacket(dst_addr, data1)
@@ -127,15 +131,16 @@ class Host:
     ## receive packet from the network layer
     def udt_receive(self):
         pkt_S = self.in_intf_L[0].get()
-        p=NetworkPacket.from_byte_S(pkt_S)
         reconstruction=""
         i=0
         if pkt_S is not None:
+            p=NetworkPacket.from_byte_S(pkt_S)
             while p.flag==1: #Until flag equal zero (last packet)
                 reconstruction=reconstruction+pkt_S
                 pkt_S=self.in_intf_L[i].get() #Change to next packet
                 i=i+1
                 p=NetworkPacket.from_byte_S(pkt_S)
+                print("RIGHT NOW WE READING PART %d", i)
             print('%s: received packet "%s" on the in interface' % (self, reconstruction))
        
     ## thread target for the host to keep receiving data
@@ -153,7 +158,7 @@ class Host:
 
 ## Implements a multi-interface router described in class
 class Router:
-    
+
     ##@param name: friendly router name for debugging
     # @param intf_count: the number of input and output interfaces 
     # @param max_queue_size: max queue length (passed to Interface)
