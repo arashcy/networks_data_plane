@@ -35,12 +35,15 @@ class Interface:
 class NetworkPacket:
     ## packet encoding lengths
     dst_addr_S_length = 5
+    src_length = 5
 
     ##@param dst_addr: address of the destination host
     # @param data_S: packet payload
-    def __init__(self, dst_addr, data_S):
+    def __init__(self, dst_addr, data_S, src):
         self.dst_addr = dst_addr
         self.data_S = data_S
+        self.src = src
+        # self.dest = dest
 
     ## called when printing the object
     def __str__(self):
@@ -49,6 +52,9 @@ class NetworkPacket:
     ## convert packet to a byte string for transmission over links
     def to_byte_S(self):
         byte_S = str(self.dst_addr).zfill(self.dst_addr_S_length)
+        byte_S += str(self.src).zfill(self.src_length)
+        # byte_s += (str(self.src_addr).zfill(self.))
+
         byte_S += self.data_S
         return byte_S
 
@@ -58,7 +64,10 @@ class NetworkPacket:
     def from_byte_S(self, byte_S):
         dst_addr = int(byte_S[0 : NetworkPacket.dst_addr_S_length])
         data_S = byte_S[NetworkPacket.dst_addr_S_length : ]
-        return self(dst_addr, data_S)
+        src = int(byte_S[NetworkPacket.dst_addr_S_length + NetworkPacket.src_length-1])
+        print('src from_byte: %d' %(src))
+        print('data from_byte: %s' %(data_S))
+        return self(dst_addr, data_S, src)
 
 
 
@@ -80,8 +89,9 @@ class Host:
     ## create a packet and enqueue for transmission
     # @param dst_addr: destination address for the packet
     # @param data_S: data being transmitted to the network layer
-    def udt_send(self, dst_addr, data_S):
-        p = NetworkPacket(dst_addr, data_S)
+    def udt_send(self, dst_addr, data_S, src):
+        p = NetworkPacket(dst_addr, data_S, src)
+
         self.out_intf_L[0].put(p.to_byte_S()) #send packets always enqueued successfully
         print('%s: sending packet "%s" on the out interface with mtu=%d' % (self, p, self.out_intf_L[0].mtu))
 
@@ -90,6 +100,10 @@ class Host:
         pkt_S = self.in_intf_L[0].get()
         if pkt_S is not None:
             print('%s: received packet "%s" on the in interface' % (self, pkt_S))
+
+    # def gather():
+    #     return
+        #reassmble fragments
 
     ## thread target for the host to keep receiving data
     def run(self):
@@ -110,9 +124,10 @@ class Router:
     ##@param name: friendly router name for debugging
     # @param intf_count: the number of input and output interfaces
     # @param max_queue_size: max queue length (passed to Interface)
-    def __init__(self, name, intf_count, max_queue_size):
+    def __init__(self, name, intf_count, max_queue_size, table):
         self.stop = False #for thread termination
         self.name = name
+        self.table = table
         #create a list of interfaces
         self.in_intf_L = [Interface(max_queue_size) for _ in range(intf_count)]
         self.out_intf_L = [Interface(max_queue_size) for _ in range(intf_count)]
@@ -135,9 +150,18 @@ class Router:
                     # HERE you will need to implement a lookup into the
                     # forwarding table to find the appropriate outgoing interface
                     # for now we assume the outgoing interface is also i
-                    self.out_intf_L[i].put(p.to_byte_S(), True)
-                    print('%s: forwarding packet "%s" from interface %d to %d with mtu %d' \
-                        % (self, p, i, i, self.out_intf_L[i].mtu))
+                    print('%d src ' %(p.src))
+                    if p.src == 0:
+                        self.out_intf_L[self.table[0]].put(p.to_byte_S(), True)
+                        print('%s: forwarding packet "%s" from interface %d to %d with mtu %d' \
+                            % (self, p, i, self.table[0], self.out_intf_L[i].mtu))
+                    elif p.src == 1:
+                        self.out_intf_L[self.table[1]].put(p.to_byte_S(), True)
+                        print('%s: forwarding packet "%s" from interface %d to %d with mtu %d' \
+                            % (self, p, i, self.table[1], self.out_intf_L[i].mtu))
+                    else:
+                        print('%d: source is not valid')
+
             except queue.Full:
                 print('%s: packet "%s" lost on interface %d' % (self, p, i))
                 pass
