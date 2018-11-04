@@ -29,12 +29,12 @@ class Interface:
 class NetworkPacket:
     ## packet encoding lengths 
     dst_addr_S_length = 5
-    offset_length = 5
-    flag_length = 5
+    offset_length = 3
+    flag_length = 2
 
     ##@param dst_addr: address of the destination host
     # @param data_S: packet payload
-    def __init__(self, dst_addr, data_S, offset, flag):
+    def __init__(self, dst_addr, data_S, flag, offset):
         self.dst_addr = dst_addr
         self.data_S = data_S
         self.offset= offset
@@ -49,7 +49,7 @@ class NetworkPacket:
         length = str(self.dst_addr).zfill(self.dst_addr_S_length)
         offset_S= str(self.offset).zfill(self.offset_length)
         flag_S= str(self.flag).zfill(self.flag_length)
-        byte_S = length + offset_S + flag_S + self.data_S
+        byte_S = length + flag_S + offset_S + self.data_S
         return byte_S
     
     ## extract a packet object from a byte string
@@ -57,10 +57,10 @@ class NetworkPacket:
     @classmethod
     def from_byte_S(self, byte_S):
         dst_add = int(byte_S[0 : NetworkPacket.dst_addr_S_length])
-        offset = int(byte_S[NetworkPacket.dst_addr_S_length : NetworkPacket.dst_addr_S_length + NetworkPacket.offset_length])
-        flag = int(byte_S[NetworkPacket.dst_addr_S_length + NetworkPacket.offset_length: NetworkPacket.dst_addr_S_length + NetworkPacket.offset_length + NetworkPacket.flag_length])
+        flag = int(byte_S[NetworkPacket.dst_addr_S_length : NetworkPacket.dst_addr_S_length + NetworkPacket.flag_length])
+        offset = int(byte_S[ NetworkPacket.dst_addr_S_length + NetworkPacket.flag_length :  NetworkPacket.dst_addr_S_length + NetworkPacket.flag_length + NetworkPacket.offset_length])
         data_S = byte_S[NetworkPacket.dst_addr_S_length  + NetworkPacket.offset_length + NetworkPacket.flag_length: ]
-        return self(dst_add, data_S, offset, flag)
+        return self(dst_add, data_S, flag, offset)
     
 
     
@@ -89,31 +89,30 @@ class Host:
         i=0
         string_S=""
         message=data_S
-
-        if(self.out_intf_L[self.number].mtu<50):
-            while counter!=0:
-                if counter<=30:
-                    print("IM HERE2")
-                    p = NetworkPacket(dst_addr, message, 0, offset)
-                    self.out_intf_L[i].put(p.to_byte_S()) #send packets always enqueued successfully
-                    print('%s: sending smaller datagram "%s" on the out interface with mtu=%d' % (self, p, self.out_intf_L[0].mtu))
-                    offset=0
-                    counter=0
-                else:
-                    print("IM HERE1")
-                    string=message[0:30]
-                    message=message[30:len(data_S)]
-                    p = NetworkPacket(dst_addr, string, 1, offset)
-                    self.out_intf_L[i].put(p.to_byte_S()) #send packets always enqueued successfully
-                    print('%s: sending smaller datagram "%s" on the out interface with mtu=%d' % (self, p, self.out_intf_L[0].mtu))
-                    counter=counter-30
-                    offset=30+offset
-                    i=i+1
-                    self.number=i
-        else:
-            p = NetworkPacket(dst_addr, data_S, 0, 0)
-            self.out_intf_L[0].put(p.to_byte_S()) #send packets always enqueued successfully
-            print('%s: sending packet "%s" on the out interface with mtu=%d' % (self, p, self.out_intf_L[0].mtu))
+##
+##        if(self.out_intf_L[self.number].mtu<50):
+##            print("IM HERE3")
+        while counter!=0:
+            if counter<=30:
+                p = NetworkPacket(dst_addr, message, 0, offset)
+                self.out_intf_L[0].put(p.to_byte_S()) #send packets always enqueued successfully
+                print('%s: sending smaller datagram "%s" on the out interface with mtu=%d' % (self, p, self.out_intf_L[0].mtu))
+                offset=0
+                counter=0
+            else:
+                string=message[0:15]
+                message=message[15:len(data_S)]
+                p = NetworkPacket(dst_addr, string, 1, offset)
+                self.out_intf_L[i].put(p.to_byte_S()) #send packets always enqueued successfully
+                print('%s: sending smaller datagram "%s" on the out interface with mtu=%d' % (self, p, self.out_intf_L[0].mtu))
+                counter=counter-30
+                offset=30+offset
+                i=i+1
+                self.number=i
+##        else:
+##            p = NetworkPacket(dst_addr, data_S, 0, 0)
+##            self.out_intf_L[0].put(p.to_byte_S()) #send packets always enqueued successfully
+##            print('%s: sending packet "%s" on the out interface with mtu=%d' % (self, p, self.out_intf_L[0].mtu))
 
 ##        if (len(data_S)>40):
 ##            data1, data2= data_S[:len(data_S)//2], data_S[len(data_S)//2:]
@@ -135,14 +134,13 @@ class Host:
         i=0
         if pkt_S is not None:
             p=NetworkPacket.from_byte_S(pkt_S)
+            reconstruction=reconstruction+pkt_S
             while p.flag==1: #Until flag equal zero (last packet)
-                reconstruction=reconstruction+pkt_S
-                pkt_S=self.in_intf_L[i].get() #Change to next packet
-                i=i+1
-                p=NetworkPacket.from_byte_S(pkt_S)
-                print("RIGHT NOW WE READING PART %d", i)
-            print('%s: received packet "%s" on the in interface' % (self, reconstruction))
-       
+                pkt_S=self.in_intf_L[0].get() #Change to next packet
+                if pkt_S is not None:
+                    p=NetworkPacket.from_byte_S(pkt_S)
+                    reconstruction=reconstruction+pkt_S
+            print('%s: received packet "%s" on the in interface' % (self, reconstruction))       
     ## thread target for the host to keep receiving data
     def run(self):
         print (threading.currentThread().getName() + ': Starting')
